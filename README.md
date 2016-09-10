@@ -7,7 +7,7 @@ terminal applications written in C and C++.
 # Usage
 See man after installation:
 ```sh
-$ man 1 bcompile
+man 1 bcompile
 ```
 
 # Dependencies
@@ -21,8 +21,9 @@ $ man 1 bcompile
 # Installation
 ## Manual
 ```sh
-$ make
-# make install
+make
+sudo make install
+
 ```
 
 # TODO
