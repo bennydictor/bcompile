@@ -1,0 +1,173 @@
+.hw SOURCES TIME_LIMIT bcompile  program C C++ Michael Sorokin
+.TH BCOMPILE 1 2016\-09\-10 GNU Bcompile
+.SH NAME
+bcompile \- a Perl script for compilation and testing single-file
+terminal applications written in C and C++.
+.SH SYNOPSIS
+.B bcompile
+[\fB-d\fR]
+[\fB-p\fR]
+[\fB-t\fR]
+[\fB-v\fR]
+[\fB-l\fR \fITIME_LIMIT\fR]
+.IR SOURCES ...
+.SH DESCRIPTION
+Currently,
+.B bcompile
+supports only C and C++.
+For each source file, 
+.B bcompile
+will run appropriate compiler with following options:
+.RS
+.sp
+.B CC
+.I " -Wall" -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c11
+.br
+.B CXX
+.I -Wall -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c++14
+.sp
+.RE
+where CC and CXX are the C and C++ compilers (see below). File type is determined by extention:
+\fI*.c\fR is considered C source code and \fI*.cpp\fR \- C++. If the compilation went
+unsuccessful,
+.B bcompile
+will tell you about it (CE, Compilation Error). The resulting filename is the
+source filename without extention. For example:
+.RS
+.sp
+.RB "$ " "ls" 
+.br
+program1.c 
+program2.cpp
+.br
+.RB "$ " "bcompile -d program.c"
+.br
+CC    [D]     program1 OK
+.br
+CC    [D]     program2 CE
+.br
+ ...
+.br
+.RB "$ " "ls -F"
+.br
+program1* program1.c program2.cpp
+.sp
+.RE
+.PP
+.I WARNING
+\.
+.B bcompile
+will skip compilation of source files with executable permission bit set (see Testing).
+
+.SS Configuration files
+By default
+.BR gcc " and" " g++"
+are used as the C and C++ compilers. This can be changed using configuration files.
+If one of the following configuration files are present, first of them is used:
+.RS
+.sp
+.IR .compilerc , " ../.compilerc" , " ../../.compilerc" ", ...,"  " $HOME/.config/compile.conf" , " /etc/compile.conf"
+.sp
+.RE
+See the FILES section for configuration file format.
+.SS Testing
+.B bcompile
+is capable of testing the resulting program. Let the source be
+.I path/program.c
+so the executable is
+.I path/program
+(if the source file has executable permission bit set, is is not compiled and considered executable itself).
+If the
+.B \-t
+flag is set,
+.B bcompile
+will search for test files. Test files are files with names satisfying regex
+.I program.[0-9]+.in
+(for example
+.I program.0.in program.456.in
+). If there is
+.I path/tests
+directory,
+.B bcompile
+will search for test files there, otherwise it will search in the 
+.I path
+directory. Then the program is executed on each test.
+.B bcompile
+will tell you if the program exited with non-zero exit code (RE, Run time Error) or run for too long (TL, Time Limit exceeded).
+If there is respective
+.I *.out
+file,
+.B bcompile
+will compare program's output with contents of this file and tell you if these differ (WA, Wrong Answer).
+If the test result is RE or WA, program's output is saved in
+.IR program.<number>.stdout " and" " program.<number>.stderr" .
+For example:
+.RS
+.sp
+.RB "$ " "ls" 
+.br
+program.0.in
+program.0.out
+program.1.in
+program.1.out
+program.2.in
+program.3.in
+program.c
+.br
+.RB "$ " "bcompile -t program.c"
+.br
+CC            a    OK
+.br
+TEST          a[0] OK
+.br
+TEST          a[1] WA
+.br
+TEST          a[2] RE
+.br
+TEST          a[3] TL
+.br
+.RB "$ " "ls -F"
+.br
+program*
+program.0.in
+program.0.out
+program.1.in
+program.1.out
+program.1.stderr
+program.1.stdout
+program.2.in
+program.2.stderr
+program.2.stdout
+program.3.in
+program.c
+.RE
+.SH OPTIONS
+.TP
+.B \-d
+Turn on debugging. With this enabled, the C compiler will use \fI-O0\fR \fI-DDEBUG\fR options
+and the C++ compiler will use \fI-O0\fR \fI-DDEBUG\fR \fI-D_GLIBCXX_DEBUG\fR options.
+Otherwise C and C++ compilers will use \fI-O2\fR option.
+.TP
+.B \-p
+Turn on profiling. With this enabled, the C and C++ compilers will use \fI-pg\fR option.
+.TP
+.B \-t
+Turn on testing. See the DESCRIPTION section of this manual for details.
+.TP
+.B \-v
+Increase verbosity.
+.TP
+.BI \-l " TIME_LIMIT"
+Use \fITIME_LIMIT\fR for the time limit (in seconds). The default value is 10.
+.SH FILES
+.TP
+.I /etc/compile.conf, $HOME/.config/compile.conf, .compilerc
+.B bcompile
+will parse these files to choose the C and C++ compilers. See the DESCRIPTION section for ordering details. File is parsed line
+by line. If the line starts with `\fICC =\fR', then everythig after the `\fI=\fR' symbol is considered a C compiler.
+Similarly, if the lines stars with `\fICXX = \fR', everythig after the `\fI=\fR' symbol is considered a C++ compiler. Every other line is ignored.
+.SH AUTHOR
+Written by Michael Sorokin <sorokinmisha007@gmail.com>.
+.SH BUGS
+There are no known bugs. If you find one, please report it to the github page (https://github.com/themikemikovi4/bcompile/issues/new)
+or to the author (see AUTHOR section).

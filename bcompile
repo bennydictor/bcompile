@@ -1,0 +1,309 @@
+#!/usr/bin/perl -w
+# bcompile
+# Copyright (C) 2016 Michael Sorokin 
+# 
+# This file is part of Bcompile
+# 
+# Bcompile is free software; you can redistribute it and/or
+# modify it under the terms of the GNU General Public License
+# as published by the Free Software Foundation; either version 2
+# of the License, or (at your option) any later version.
+# 
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+# 
+# You should have received a copy of the GNU General Public License
+# along with this program; if not, write to the Free Software
+# Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+
+
+use strict;
+use warnings;
+
+use Getopt::Std;
+use Text::ParseWords;
+use Time::HiRes qw(clock_gettime CLOCK_REALTIME);
+use File::Basename qw(dirname fileparse);
+use POSIX ":sys_wait_h";
+
+my %extmsg = (
+    'c' =>   'CC   ',
+    'cpp' => 'CXX  ',
+);
+
+# Parse options
+
+my %options;
+getopts("dptvl:", \%options);
+
+my $debug = defined $options{d};
+my $profile = defined $options{p};
+my $test = defined $options{t};
+my $verbose = defined $options{v};
+my $time_limit;
+if (defined $options{l}) {
+    $time_limit = $options{l};
+} else {
+    $time_limit = 10;
+}
+
+if ($verbose) {
+    if ($debug) {
+        print "Debug enabled\n";
+    } else {
+        print "Debug disabled\n";
+    }
+    if ($profile) {
+        print "Profiling enabled\n";
+    } else {
+        print "Profiling disabled\n";
+    }
+    if ($test) {
+        print "Testing enabled\n";
+    } else {
+        print "Testing disabled\n";
+    }
+    print "Verbose enabled\n";
+    print "Time limit is $time_limit seconds\n";
+}
+
+# Parse configuration files
+
+my $CC = 'gcc';
+my $CFLAGS = '-Wall -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c11';
+
+my $CXX = 'g++';
+my $CXXFLAGS = '-Wall -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c++14';
+
+sub readconf {
+    open(my $fh, '<', $_[0]);
+    print "Reading $_[0]\n" if $verbose;
+    while (<$fh>) {
+        if (/^\s*CC\s*=/) {
+            s/\s*CC\s*=\s*//;
+            s/\n//g;
+            $CC = $_;
+        }
+        if (/^\s*CXX\s*=/) {
+            s/\s*CXX\s*=\s*//;
+            s/\n//g;
+            $CXX = $_;
+        }
+    }
+}
+
+my $conf_file = '';
+$conf_file = '/etc/bcompile.conf' if -f '/etc/bcompile.conf';
+$conf_file = "$ENV{HOME}/.config/bcompile.conf" if -f "$ENV{HOME}/.config/bcompile.conf";
+my $conf_dir = `pwd`;
+while (not -f "$conf_dir/.bcompilerc" and $conf_dir ne '/') {
+    $conf_dir = dirname($conf_dir);
+}
+$conf_file = "$conf_dir/.bcompilerc" if -f "$conf_dir/.bcompilerc";
+readconf($conf_file) if $conf_file ne '';
+
+if ($debug) {
+    $CFLAGS .= ' -O0 -ggdb -DDEBUG';
+    $CXXFLAGS .= ' -O0 -ggdb -DDEBUG -D_GLIBCXX_DEBUG';
+} else {
+    $CFLAGS .= ' -O2';
+    $CXXFLAGS .= ' -O2';
+}
+
+if ($profile) {
+    $CFLAGS .= ' -pg';
+    $CXXFLAGS .= ' -pg';
+}
+
+my $CCOMPILE = "$CC $CFLAGS";
+my $CXXCOMPILE = "$CXX $CXXFLAGS";
+
+print "CCOMPILE = $CCOMPILE\n" if $verbose;
+print "CXXCOMPILE = $CXXCOMPILE\n" if $verbose;
+
+# Fancy run function
+
+my $run_time;
+sub run {
+    my $pid = fork;
+    if ($pid == 0) {
+        if ($_[1]) {
+            open(STDIN, '<', $_[1]) or die 'Cannot reopen stdin';
+        }
+        if ($_[2]) {
+            open(STDOUT, '>', $_[2]) or die 'Cannot reopen stdout';
+        }
+        if ($_[3]) {
+            open(STDERR, '>', $_[3]) or die 'Cannot reopen stderr';
+        }
+        exec shellwords($_[0]);
+    } else {
+        my $es;
+        if ($_[4]) {
+            my $bwait = clock_gettime(CLOCK_REALTIME);
+            $run_time = -1;
+            while ($bwait + $_[4] >= clock_gettime(CLOCK_REALTIME)) {
+                if (waitpid($pid, WNOHANG) != 0) {
+                    $es = $?;
+                    $run_time = clock_gettime(CLOCK_REALTIME) - $bwait;
+                    last;
+                }
+            }
+            if ($run_time == -1) {
+                $run_time = $time_limit;
+                kill(15, $pid);
+            }
+        } else {
+            waitpid($pid, 0);
+            $es = $?;
+        }
+        return $es;
+    }
+}
+
+# Parse arguments
+
+my $pname_len = 0;
+my %hname;
+my %hpname;
+my %hdir;
+my %hext;
+my %htests;
+my %htn;
+
+foreach (@ARGV) {
+    chomp $_;
+    my $file = $_;
+    $hext{$_} = s/^.*\.//r;
+    $hname{$_} = s/\.[^\.]*$//r;
+    $hpname{$_} = s/^.*\///r;
+    $hpname{$_} =~ s/\.[^\.]*$//;
+    if (/\//) {
+        $hdir{$_} = s/\/[^\/]*$//r;
+    } else {
+        $hdir{$_} = '.';
+    }
+    if (length($hpname{$_}) > $pname_len) {
+        $pname_len = length($hpname{$_});
+    }
+    my $pname = $hpname{$_};
+    if ($test) {
+        my @ctests = ();
+        my $dh;
+        my $test_dir = $hdir{$_};
+        if (-d "$test_dir/tests") {
+            $test_dir .= "/tests"
+        }
+        opendir $dh, "$test_dir";
+        foreach (readdir $dh) {
+            next unless -f "$test_dir/$_";
+            next unless /$pname\.[0-9]+\.in/;
+            push @ctests, "$test_dir/$_";
+        }
+        @ctests = sort @ctests;
+        @htests{$file} = \@ctests;
+        foreach (@ctests) {
+            $htn{$_} = s/\.in//r;
+            $htn{$_} =~ s/^.*\.//;
+            if (length("$pname\[$htn{$_}\]") > $pname_len) {
+                $pname_len = length("$pname\[$htn{$_}\]");
+            }
+        }
+    }
+}
+
+# Compile and run
+
+foreach (@ARGV) {
+    chomp $_;
+    my $name = $hname{$_};
+    my $pname = $hpname{$_};
+    my $dir = $hdir{$_};
+    my $ext = $hext{$_};
+    if (not -e $_) {
+        printf("!!!           %-*s no such file '%s'\n", $pname_len, $pname, $_);
+        next;
+    }
+    my $exe;
+    if (-x $_) {
+        $exe = "$dir/$pname";
+    } else {
+        $exe = "$dir/$pname";
+        if (not $extmsg{$ext}) {
+            printf("!!!           %-*s unknown file extention '%s'\n", $pname_len, $pname, $ext);
+            next;
+        }
+        my $msg = $extmsg{$ext};
+        if ($debug) {
+            $msg .= ' [D]';
+        } else {
+            $msg .= '    ';
+        }
+        if ($profile) {
+            $msg .= ' [P]';
+        } else {
+            $msg .= '    ';
+        }
+        my $cmd = '';
+        if ($ext eq 'c') {
+            $cmd = "$CC $CFLAGS \"$_\" -o \"$name\"";
+        } elsif ($ext eq 'cpp') {
+            $cmd = "$CXX $CXXFLAGS \"$_\" -o \"$name\"";
+        }
+        print "$cmd\n" if $verbose;
+        printf('%s %-*s', $msg, $pname_len, $pname);
+        my $es = run($cmd, '/dev/stdin', "$name.compile", '/dev/stdout');
+        if ($es != 0) {
+            print " \e[1;31mCE\e[0m\n";
+            system("cat \"$name.compile\"");
+            system("rm -f \"$name.compile\"");
+            next;
+        }
+        print " \e[1;32mOK\e[0m\n";
+        system("cat \"$name.compile\"");
+        system("rm -f \"$name.compile\"");
+    }
+    if ($test) {
+        my $tests_ref = $htests{$_};
+        my @tests = @$tests_ref;
+        my $rm_files = '';
+        foreach (@tests) {
+            my $tn = $htn{$_};
+            my $out = s/\.in$/.out/r;
+            my $fout = s/\.in$/.stdout/r;
+            my $ferr = s/\.in$/.stderr/r;
+            printf("TEST          %-*s", $pname_len, "$pname\[$tn\]");
+            my $es = run("$exe", "$_", "$fout", "$ferr", $time_limit);
+            if ($run_time >= $time_limit) {
+                print " \e[1;31mTL\e[0m\n";
+                $rm_files = "$rm_files \"$fout\" \"$ferr\"";
+            } elsif ($es != 0) {
+                print " \e[1;31mRE\e[0m\n";
+                print "Test finished in $run_time seconds\n" if $verbose;
+            } elsif (-f $out) {
+                $es = system("diff -w \"$fout\" \"$out\" 2>&1 >/dev/null");
+                if ($es != 0) {
+                    print " \e[1;31mWA\e[0m\n";
+                    print "Test finished in $run_time seconds\n" if $verbose;
+                    if ($verbose)  {
+                        print "program output:\n";
+                        system("cat \"$fout\"");
+                        print "correct:\n";
+                        system("cat \"$out\"");
+                    }
+                } else {
+                    print " \e[1;32mOK\e[0m\n";
+                    print "Test finished in $run_time seconds\n" if $verbose;
+                    $rm_files = "$rm_files \"$fout\" \"$ferr\"";
+                }
+            } else {
+                print " \e[1;32mOK\e[0m\n";
+                print "Test finished in $run_time seconds\n" if $verbose;
+                $rm_files = "$rm_files \"$fout\" \"$ferr\"";
+            }
+        }
+        system("rm $rm_files") if $rm_files ne '';
+    }
+}
