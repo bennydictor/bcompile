@@ -1,173 +1,272 @@
-.hw SOURCES TIME_LIMIT bcompile  program C C++ Michael Sorokin
-.TH BCOMPILE 1 2016\-09\-10 GNU Bcompile
+\" bcompile.1
+\" Copyright (C) 2016 Michael Sorokin 
+\" 
+\" This file is part of Bcompile
+\" 
+\" Bcompile is free software; you can redistribute it and/or
+\" modify it under the terms of the GNU General Public License
+\" as published by the Free Software Foundation; either version 2
+\" of the License, or (at your option) any later version.
+\" 
+\" This program is distributed in the hope that it will be useful,
+\" but WITHOUT ANY WARRANTY; without even the implied warranty of
+\" MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+\" GNU General Public License for more details.
+\" 
+\" You should have received a copy of the GNU General Public License
+\" along with this program; if not, write to the Free Software
+\" Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+.hw FILENAME OPTIONS TIME_LIMIT bcompile "bcompile.conf" ".bcompilerc" "~/.config"C C++ Michael Sorokin
+.TH BCOMPILE 1 2016\-09\-11 GNU Bcompile
 .SH NAME
 bcompile \- a Perl script for compilation and testing single-file
 terminal applications written in C and C++.
 .SH SYNOPSIS
 .B bcompile
-[\fB-d\fR]
-[\fB-p\fR]
-[\fB-t\fR]
-[\fB-v\fR]
-[\fB-l\fR \fITIME_LIMIT\fR]
-.IR SOURCES ...
+.RI [ OPTIONS ] " FILENAME"
 .SH DESCRIPTION
-Currently,
+.BR bcompile 's
+execution can be divided in following four stages:
+.SS Parsing FILENAME
+.I FILENAME
+is divided in three parts:
+.IR PATH , " NAME" " and" " SUFFIX" .
+.I PATH
+is then canonicalized (symlinks and ~ are expanded, . and .. removed, etc.), so
+it is absolute.
+.I SUFFIX
+is the last one, if there are many. For example,
+.I ~/project/file.c
+becomes
+.IR /home/user/project ", " file ", " .c
+.SS Choosing and configuring compiler
 .B bcompile
-supports only C and C++.
-For each source file, 
-.B bcompile
-will run appropriate compiler with following options:
+keeps track of so called configuration variables. They are much similar to environment
+variables, but stored independently. The default values for them is listed below:
 .RS
 .sp
-.B CC
-.I " -Wall" -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c11
+.BR CC "                     =" "\fI gcc"
 .br
-.B CXX
-.I -Wall -Wextra -Wshadow -fdiagnostics-color -DLOCAL -std=c++14
+.BR CFLAGS "                 =" "\fI -O2"
+.br
+.BR CFLAGS_DEBUG "           =" "\fI -O0 -g"
+.br
+.BR CFLAGS_PROFILE "         =" "\fI -O2 -pg"
+.br
+.BR CFLAGS_DEBUG_PROFILE "   =" "\fI -O0 -g -pg"
+.br
+.BR CXX "                    =" "\fI g++"
+.br
+.BR CXXFLAGS "               =" "\fI -O2"
+.br
+.BR CXXFLAGS_DEBUG "         =" "\fI -O0 -g"
+.br
+.BR CXXFLAGS_PROFILE "       =" "\fI -O2 -pg"
+.br
+.BR CXXFLAGS_DEBUG_PROFILE " =" "\fI -O0 -g -pg"
 .sp
 .RE
-where CC and CXX are the C and C++ compilers (see below). File type is determined by extention:
-\fI*.c\fR is considered C source code and \fI*.cpp\fR \- C++. If the compilation went
-unsuccessful,
+These can be changed using configuration files.
+Even though
 .B bcompile
-will tell you about it (CE, Compilation Error). The resulting filename is the
-source filename without extention. For example:
+uses only variables listed above, you can create your own variables for your editing pleasure (see the EXAMPLES section).
+.B bcompile
+searches for configuration files in following order:
+.IR /etc/bcompile.conf ", " ~/.config/bcompile.conf ", " /.bcompilerc, ", ..., " PATH/../.bcompilerc ", " PATH/.compilerc .
+Each found file is parsed according to rules in the FILES section. After that two varables are created,
+depending on precense of
+.BR -d " and" " -p"
+flags:
 .RS
 .sp
-.RB "$ " "ls" 
+.BR CCOMPILE "   =" " $CC  $CFLAGS[_DEBUG][_PROFILE]"
 .br
-program1.c 
-program2.cpp
-.br
-.RB "$ " "bcompile -d program.c"
-.br
-CC    [D]     program1 OK
-.br
-CC    [D]     program2 CE
-.br
- ...
-.br
-.RB "$ " "ls -F"
-.br
-program1* program1.c program2.cpp
+.BR CXXCOMPILE " =" " $CXX $CXXFLAGS[_DEBUG][_PROFILE]
 .sp
 .RE
-.PP
-.I WARNING
-\.
-.B bcompile
-will skip compilation of source files with executable permission bit set (see Testing).
-
-.SS Configuration files
-By default
-.BR gcc " and" " g++"
-are used as the C and C++ compilers. This can be changed using configuration files.
-If one of the following configuration files are present, first of them is used:
-.RS
-.sp
-.IR .compilerc , " ../.compilerc" , " ../../.compilerc" ", ...,"  " $HOME/.config/compile.conf" , " /etc/compile.conf"
-.sp
-.RE
-See the FILES section for configuration file format.
-.SS Testing
-.B bcompile
-is capable of testing the resulting program. Let the source be
-.I path/program.c
-so the executable is
-.I path/program
-(if the source file has executable permission bit set, is is not compiled and considered executable itself).
+.SS Compiling
+Then the source file is compiled using the
+.BR CCOMPILE " or the" " CXXCOMPILE"
+variables, depending on the 
+.IR SUFFIX .
 If the
+.B \-t 
+flag is present and
+.I SUFFIX
+is not recognized and
+.I FILENAME
+is executable, this stage is skipped.
+If the compilation fails,
+.B bcompile
+would report
+.B CE
+(Compilation Error) and stop.
+.SS Testing
+This stage is done iff the
 .B \-t
-flag is set,
+flag is present. Firstly,
+.B compile
+searches for tests. Tests are files with names
+.IR NAME.TEST_NAME.in ,
+where TEST_NAME is a string of alphanumeric characters and the `_' symbol.
+Tests are searched in the
+.I PATH/tests
+directory if it exists, otherwise in the
+.I PATH
+directory. Let this directory be 
+.IR TESTS_PATH .
+.PP
+Then tests are executed in the lexicographical order.
+The program runs with stdin set to
+.IR TESTS_PATH/NAME.TEST_NAME.in ,
+stdout set to
+.I TESTS_PATH/NAME.TEST_NAME.stdout
+and stderr set to
+.I TESTS_PATH/NAME.TEST_NAME.stderr
+.PP
+If the program runs for too long (longer than the
+.IR TIME_LIMIT ,
+see the OPTIONS section), it is killed with 
+.B SIGTERM
+and 
+.B TL
+(Time Limit) is reported.
+.PP
+If the program exitst with non-zero exit status or killed by signal,
+.B RE
+(Run time Error) is reported.
+.PP
+Otherwise, the
+.I TESTS_PATH/NAME.TEST_NAME.stdout
+file is compared against the
+.I TESTS_PATH/NAME.TEST_NAME.out
+file, ignoring all whitespace characters. If they
+differ, their
+.B diff
+is kept in the
+.I TESTS_PATH/NAME.TEST_NAME.diff
+file and
+.B WA
+(Wrong Answer) is reported.
+.PP
+If they do not differ, the test is considered passed and
+.B OK
+is reported.
+.PP
+If the test was failed,
+.IR TESTS_PATH/NAME.TEST_NAME.stdout " and" " TESTS_PATH/NAME.TEST_NAME.stderr"
+files are kept, otherwise they are deleted.
+.PP
+By default,
 .B bcompile
-will search for test files. Test files are files with names satisfying regex
-.I program.[0-9]+.in
-(for example
-.I program.0.in program.456.in
-). If there is
-.I path/tests
-directory,
+would run all found tests. However, if the
+.B -e
+flag is present,
 .B bcompile
-will search for test files there, otherwise it will search in the 
-.I path
-directory. Then the program is executed on each test.
-.B bcompile
-will tell you if the program exited with non-zero exit code (RE, Run time Error) or run for too long (TL, Time Limit exceeded).
-If there is respective
-.I *.out
-file,
-.B bcompile
-will compare program's output with contents of this file and tell you if these differ (WA, Wrong Answer).
-If the test result is RE or WA, program's output is saved in
-.IR program.<number>.stdout " and" " program.<number>.stderr" .
-For example:
-.RS
-.sp
-.RB "$ " "ls" 
-.br
-program.0.in
-program.0.out
-program.1.in
-program.1.out
-program.2.in
-program.3.in
-program.c
-.br
-.RB "$ " "bcompile -t program.c"
-.br
-CC            a    OK
-.br
-TEST          a[0] OK
-.br
-TEST          a[1] WA
-.br
-TEST          a[2] RE
-.br
-TEST          a[3] TL
-.br
-.RB "$ " "ls -F"
-.br
-program*
-program.0.in
-program.0.out
-program.1.in
-program.1.out
-program.1.stderr
-program.1.stdout
-program.2.in
-program.2.stderr
-program.2.stdout
-program.3.in
-program.c
-.RE
+would stop after first failed test.
 .SH OPTIONS
 .TP
-.B \-d
-Turn on debugging. With this enabled, the C compiler will use \fI-O0\fR \fI-DDEBUG\fR options
-and the C++ compiler will use \fI-O0\fR \fI-DDEBUG\fR \fI-D_GLIBCXX_DEBUG\fR options.
-Otherwise C and C++ compilers will use \fI-O2\fR option.
+.BR -d , " --debug"
+Enable debugging
 .TP
-.B \-p
-Turn on profiling. With this enabled, the C and C++ compilers will use \fI-pg\fR option.
+.BR -p , " --profile"
+Enable profiling
 .TP
-.B \-t
-Turn on testing. See the DESCRIPTION section of this manual for details.
+.BR -t , " --test"
+Enable testing
 .TP
-.B \-v
-Increase verbosity.
+.BR -e , " --exit"
+ Stop after first failed test
 .TP
-.BI \-l " TIME_LIMIT"
-Use \fITIME_LIMIT\fR for the time limit (in seconds). The default value is 10.
+.BR -v , " --verbose"
+ Increase verbosity
+.TP
+.BR -l , " --time-limit" " \fITIME_LIMIT"
+Use TIME_LIMIT as the time limit (in seconds). The default value is 10.
+.TP
+.BR -h , " --help"
+Show help message
+.TP
+.BR -V , " --version"
+Show version information
+.SH EXIT STATUS
+If FILE does not exist, is not a regular text file or the suffix is not recognized, the exit status is 1. If the compilation
+fails, the exit status is 2. If any test fail, the exit status is 3. Otherwise, the exit status is 0.
 .SH FILES
 .TP
-.I /etc/compile.conf, $HOME/.config/compile.conf, .compilerc
+.IR compile.conf , " .compilerc"
 .B bcompile
-will parse these files to choose the C and C++ compilers. See the DESCRIPTION section for ordering details. File is parsed line
-by line. If the line starts with `\fICC =\fR', then everythig after the `\fI=\fR' symbol is considered a C compiler.
-Similarly, if the lines stars with `\fICXX = \fR', everythig after the `\fI=\fR' symbol is considered a C++ compiler. Every other line is ignored.
+parses these files to set compilers and their options (see DESCRIPTION and EXAMPLE sections for ordering). File is parsed line
+by line. Every line should contain 
+.IR VARIABLE ,
+the `=' symbol and 
+.IR VALUE ,
+otherwise it is ignored.
+.I VARIABLE
+is a string of alphanumeric characters and underscores `_'. 
+.I VARIABLE
+cannot start with a number. Whitespace characters around the `=' symbol are ignored.
+You can use previously defined variables in the
+.I VALUE
+field. To do this, write the `$' symbol before the variable name, similar to how shell handles variables.
+See the EXAMPLE section for better understanding.
+.SH EXAMPLES
+.SS bcompile.conf
+Author of this manual actually uses this file.
+    \fBCFLAGS_BASE\fR            = -Wall -Wextra -Wshadow -fdiagnostics-color -std=c11 -DLOCAL
+    \fBCXXFLAGS_BASE\fR          = -Wall -Wextra -Wshadow -fdiagnostics-color -std=c++14 -DLOCAL
+
+    \fBCFLAGS_DEBUG_EXT\fR       = -O0 -ggdb -DDEBUG
+    \fBCXXFLAGS_DEBUG_EXT\fR     = $CFLAGS_DEBUG_EXT -D_GLIBCXX_DEBUG
+    \fBNODEBUG_EXT\fR            = -O2
+    \fBPROFILE_EXT\fR            = -pg
+
+    \fBCFLAGS\fR                 = $CFLAGS_BASE $NODEBUG_EXT
+    \fBCFLAGS_DEBUG\fR           = $CFLAGS_BASE $CFLAGS_DEBUG_EXT
+    \fBCFLAGS_PROFILE\fR         = $CFLAGS_BASE $NODEBUG_EXT $PROFILE_EXT
+    \fBCFLAGS_DEBUG_PROFILE\fR   = $CFLAGS_BASE $CFLAGS_DEBUG_EXT $PROFILE_EXT
+
+    \fBCXXFLAGS\fR               = $CXXFLAGS_BASE $NODEBUG_EXT
+    \fBCXXFLAGS_DEBUG\fR         = $CXXFLAGS_BASE $CXXFLAGS_DEBUG_EXT
+    \fBCXXFLAGS_PROFILE\fR       = $CXXFLAGS_BASE $NODEBUG_EXT $PROFILE_EXT
+    \fBCXXFLAGS_DEBUG_PROFILE\fR = $CXXFLAGS_BASE $CXXFLAGS_DEBUG_EXT $PROFILE_EXT
+.SS Possible shell session
+.ss
+    $ \fBls -1F\fR
+    program.0.in
+    program.0.out
+    program.1.in
+    program.1.out
+    program.2.in
+    program.3.in
+    program.c
+    $ \fBbcompile -dt -l 1 program.c\fR
+    CC   [D] program    OK
+    TEST     program[0] WA
+    TEST     program[1] WA
+    TEST     program[2] RE
+    TEST     program[3] TL
+    $ \fBls -1F\fR
+    program*
+    program.0.diff
+    program.0.in
+    program.0.out
+    program.0.stderr
+    program.0.stdout
+    program.1.diff
+    program.1.in
+    program.1.out
+    program.1.stderr
+    program.1.stdout
+    program.2.in
+    program.2.stderr
+    program.2.stdout
+    program.3.in
+    program.3.stderr
+    program.3.stdout
+    program.c
 .SH AUTHOR
 Written by Michael Sorokin <sorokinmisha007@gmail.com>.
 .SH BUGS
 There are no known bugs. If you find one, please report it to the github page (https://github.com/themikemikovi4/bcompile/issues/new)
-or to the author (see AUTHOR section).
+or to the author <sorokinmisha007@gmail.com>. Also, please suggest how to improve code and documentation readability (including typos, etc.).

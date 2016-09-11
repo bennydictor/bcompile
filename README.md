@@ -23,11 +23,8 @@ man 1 bcompile
 ```sh
 make
 sudo make install
-
 ```
 
 # TODO
-* File type detection by the file(1) utility, rather than by extention.
 * Other programming languages support
-* More flexible configuration
 * Write .deb, .pkg, .ebuild, etc.
