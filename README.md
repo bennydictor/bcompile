@@ -24,7 +24,3 @@ man 1 bcompile
 make
 sudo make install
 ```
-
-# TODO
-* Other programming languages support
-* Write .deb, .pkg, .ebuild, etc.
