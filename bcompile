@@ -99,6 +99,7 @@ sub show_help {
 # Parse options
 
 my ($debug, $profile, $test, $time_limit, $exit, $verbose);
+$verbose = 0;
 $time_limit = 10;
 GetOptions(
     'debug|d'        => \$debug,
@@ -106,12 +107,13 @@ GetOptions(
     'test|t'         => \$test,
     'time-limit|l=i' => \$time_limit,
     'exit|e'         => \$exit,
-    'verbose|v'      => \$verbose,
+    'verbose|v'      => sub { $verbose += 1 },
     'version|V'      => \&show_version,
     'help|h'         => \&show_help
 );
+my $vverbose = $verbose >= 2;
 
-if ($verbose) {
+if ($vverbose) {
     if ($debug) {
         say 'Debug enabled';
     } else {
@@ -133,7 +135,7 @@ if ($verbose) {
     } else {
         say 'Exit disabled';
     }
-    say 'Verbosity is high';
+    say 'Verbosity is $verbose';
 }
 # Parse the argument
 
@@ -175,7 +177,7 @@ sub parse_conf_file {
     my $file = $_[0];
     if (-f $file) {
         open(my $fh, '<', $file) or die MSG_ERROR . "Cannot open $file";
-        say "Parsing configuration file $file" if $verbose;
+        say "Parsing configuration file $file" if $vverbose;
         while (<$fh>) {
             chomp $_;
             if (/^\s*[A-Za-z_]\w*\s*=/) {
@@ -183,13 +185,13 @@ sub parse_conf_file {
                 my $value = s/^[^=]*=\s*(.*)$/$1/r;
                 $value =~ s/\$([A-Za-z_]\w*)/\$configuration{$1}/g;
                 $value = eval "\"$value\"";
-                say "\"$name\" = \"$value\"" if $verbose;
+                say "\"$name\" = \"$value\"" if $vverbose;
                 $configuration{$name} = $value;
             }
         }
-        say "Done parsing configuration file $file" if $verbose;
+        say "Done parsing configuration file $file" if $vverbose;
     } else {
-        say "Configuration file $file is missing" if $verbose;
+        say "Configuration file $file is missing" if $vverbose;
     }
 }
 
@@ -226,8 +228,8 @@ if ($debug) {
     }
 }
 
-say "CCOMPILE = $CCOMPILE" if $verbose;
-say "CXXCOMPILE = $CXXCOMPILE" if $verbose;
+say "CCOMPILE = $CCOMPILE" if $vverbose;
+say "CXXCOMPILE = $CXXCOMPILE" if $vverbose;
 
 # Make test list and recalculate $name_len
 
@@ -240,7 +242,7 @@ if ($test) {
     foreach (readdir $dh) {
         if (/^$name\.\w+\.in$/) {
             push(@tests, "$tests_path/$_");
-            say "Test file found: $tests_path/$_" if $verbose;
+            say "Test file found: $tests_path/$_" if $vverbose;
         }
     }
     @tests = sort @tests;
@@ -312,7 +314,7 @@ if (not $skip_compilation) {
     $msg_len = length($msg);
 
     my $compile_out = "$path/$name.compile";
-    say "$compile_cmd </dev/null >$compile_out 2>/dev/stdout" if $verbose;
+    say "$compile_cmd </dev/null >$compile_out 2>/dev/stdout" if $vverbose;
     printf("$msg %-*s ", $name_len, $name);
     (my $exit_status, my $run_time) = run($compile_cmd, '/dev/null', $compile_out, '/dev/stdout');
     if ($exit_status != 0) {
@@ -320,7 +322,7 @@ if (not $skip_compilation) {
     } else {
         say MSG_OK;
     }
-    printf("Compilation finished in %.2f seconds\n", $run_time) if $verbose;
+    printf("Compilation finished in %.2f seconds\n", $run_time) if $vverbose;
     system "cat \"$compile_out\"";
     system "rm -f \"$compile_out\"";
     exit 2 if $exit_status != 0;
@@ -336,7 +338,7 @@ if ($test) {
         my $test_out  = "$tests_path/$name.$test_name.out";
         my $run_out   = "$tests_path/$name.$test_name.stdout";
         my $run_err   = "$tests_path/$name.$test_name.stderr";
-        say "$exe <$test_in >$run_out 2>$run_err" if $verbose;
+        say "$exe <$test_in >$run_out 2>$run_err" if $vverbose;
         printf('%-*s %-*s ', $msg_len, 'TEST', $name_len, "$name\[$test_name\]");
         (my $exit_status, my $run_time) = run($exe, $test_in, $run_out, $run_err, $time_limit);
         if ($run_time >= $time_limit) {
@@ -347,7 +349,7 @@ if ($test) {
         }
         if ($exit_status != 0) {
             say MSG_RE;
-            printf("Test finished in %.2f seconds\n", $run_time) if $verbose;
+            printf("Test finished in %.2f seconds\n", $run_time) if $vverbose;
             $test_fail = 1;
             last if $exit;
             next;
@@ -357,7 +359,7 @@ if ($test) {
             ($exit_status, $run_time) = run("diff -w \"$test_out\" \"$run_out\"", '/dev/null', $run_diff, '/dev/stdout');
             if ($exit_status != 0) {
                 say MSG_WA;
-                printf("Test finished in %.2f seconds\n", $run_time) if $verbose;
+                printf("Test finished in %.2f seconds\n", $run_time) if $vverbose;
                 if ($verbose)  {
                     say 'diff output:';
                     system "cat \"$run_diff\"";
@@ -370,7 +372,7 @@ if ($test) {
             }
         }
         say MSG_OK;
-        printf("Test finished in %.2f seconds\n", $run_time) if $verbose;
+        printf("Test finished in %.2f seconds\n", $run_time) if $vverbose;
         system "rm -f \"$run_out\" \"$run_err\"";
     }
 }
