@@ -179,8 +179,8 @@ sub parse_conf_file {
         while (<$fh>) {
             chomp $_;
             if (/^\s*[A-Za-z_]\w*\s*=/) {
-                my $name = s/\s*([A-Za-z_]\w*)\s*=.*/$1/r;
-                my $value = s/[^=]*=\s*(.*)/$1/r;
+                my $name = s/^\s*([A-Za-z_]\w*)\s*=.*$/$1/r;
+                my $value = s/^[^=]*=\s*(.*)$/$1/r;
                 $value =~ s/\$([A-Za-z_]\w*)/\$configuration{$1}/g;
                 $value = eval "\"$value\"";
                 say "\"$name\" = \"$value\"" if $verbose;
@@ -238,14 +238,14 @@ if ($test) {
     $tests_path .= '/tests' if -d "$tests_path/tests";
     opendir(my $dh, $tests_path);
     foreach (readdir $dh) {
-        if (/$name\.\w+\.in/) {
+        if (/^$name\.\w+\.in$/) {
             push(@tests, "$tests_path/$_");
             say "Test file found: $tests_path/$_" if $verbose;
         }
     }
     @tests = sort @tests;
     foreach (@tests) {
-        my $test_name = s/.*\.(\w+)\.in/$1/r;
+        my $test_name = s/^.*\.(\w+)\.in$/$1/r;
         $name_len = max($name_len, length("$name\[$test_name\]"));
     }
 }
@@ -332,7 +332,7 @@ my $test_fail = 0;
 if ($test) {
     foreach (@tests) {
         my $test_in   = $_;
-        my $test_name = s/.*\.(\w+)\.in/$1/r;
+        my $test_name = s/^.*\.(\w+)\.in$/$1/r;
         my $test_out  = "$tests_path/$name.$test_name.out";
         my $run_out   = "$tests_path/$name.$test_name.stdout";
         my $run_err   = "$tests_path/$name.$test_name.stderr";
