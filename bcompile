@@ -354,7 +354,7 @@ if ($test) {
         }
         if (-f $test_out) {
             my $run_diff = "$tests_path/$name.$test_name.diff";
-            $exit_status = run("diff -w \"$test_out\" \"$run_out\"", '/dev/null', $run_diff, '/dev/stdout');
+            ($exit_status, $run_time) = run("diff -w \"$test_out\" \"$run_out\"", '/dev/null', $run_diff, '/dev/stdout');
             if ($exit_status != 0) {
                 say MSG_WA;
                 printf("Test finished in %.2f seconds\n", $run_time) if $verbose;
